@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ a.asset_tag }} - PC資産管理{% endblock %}
+{% block content %}
+<h1>{{ a.asset_tag }} <span class="badge b-{{ a.status.value }}">{{ a.status.value }}</span>
+  <span class="muted small">{{ a.model_name }}</span></h1>
+
+<div class="grid">
+  <div class="card"><h2>調達・会計</h2><dl class="kv">
+    <dt>予算</dt><dd>{{ a.budget_code or '—' }}</dd>
+    <dt>購入先</dt><dd>{{ a.vendor or '—' }}</dd>
+    <dt>注文日 / 納品日</dt><dd>{{ a.order_date | d }} / {{ a.delivery_date | d }}</dd>
+    <dt>価格</dt><dd>{{ a.price | yen }}</dd>
+    <dt>資産項目</dt><dd>{{ a.asset_item.value }}{% if a.asset_item.value == '減価償却資産' %}（定額法・耐用年数 {{ a.useful_life_years }}年）{% elif a.asset_item.value == '一括償却資産' %}（3年均等）{% endif %}</dd>
+    <dt>償却残価</dt><dd><b>{{ a.book_value | yen }}</b> <span class="muted small">累計 {{ a.accumulated_depreciation | yen }}／{{ today | d }}時点</span></dd>
+    <dt>保証期間</dt><dd>{{ a.warranty_months }}か月（〜{{ a.warranty_end | d }}）{% if a.warranty_active == False %} <span class="badge b-修理中">保証切れ</span>{% endif %}</dd>
+  </dl></div>
+  <div class="card"><h2>製品</h2><dl class="kv">
+    <dt>カテゴリー</dt><dd>{{ a.categories | select | join(' › ') or '—' }}</dd>
+    <dt>P/N</dt><dd>{{ a.part_number or '—' }}</dd>
+    <dt>S/N</dt><dd>{{ a.serial_number }}</dd>
+    <dt>ホスト名</dt><dd>{{ a.hostname or '—' }} <span class="muted small">{{ a.ip_address }}</span></dd>
+    <dt>パターン / OS</dt><dd>{{ a.kitting_pattern or '—' }} <span class="muted small">{{ a.os_build }}</span></dd>
+    <dt>最終確認</dt><dd>{{ a.last_seen | dt }}</dd>
+  </dl></div>
+  <div class="card"><h2>利用</h2><dl class="kv">
+    <dt>割り当て先</dt><dd>{{ a.assignee or '—' }} <span class="muted small">{{ a.assignee_department }}</span></dd>
+    <dt>利用開始日</dt><dd>{{ a.usage_start | d }}</dd>
+    <dt>利用終了日</dt><dd>{{ a.usage_end | d }}</dd>
+    <dt>返却日</dt><dd>{{ a.return_date | d }}</dd>
+    {% if a.disposal_date %}
+    <dt>廃棄日</dt><dd>{{ a.disposal_date | d }}</dd>
+    <dt>廃棄処理</dt><dd>{{ a.disposal_method }} / {{ a.disposal_certificate }}</dd>
+    <dt>データ消去</dt><dd>{{ a.data_erasure }}</dd>
+    {% endif %}
+  </dl></div>
+</div>
+
+{% if can_operate and a.status.value != '廃棄済' %}
+<div class="card"><h2>操作</h2>
+  {% if a.assignee %}
+  <form class="inline" method="post" action="/ui/assets/{{ a.asset_tag }}/return">
+    <input name="note" placeholder="返却メモ（状態など）"><button>返却を登録</button>
+  </form>
+  {% else %}
+  <form class="inline" method="post" action="/ui/assets/{{ a.asset_tag }}/assign">
+    <input name="assignee" placeholder="割り当て先（氏名・メール）" required>
+    <input name="department" placeholder="部署"><button>割り当て</button>
+  </form>
+  {% endif %}
+  <form class="inline" method="post" action="/ui/assets/{{ a.asset_tag }}/status">
+    <select name="status" required><option value="">状態を選択…</option>{% for s in statuses if s != a.status %}<option>{{ s.value }}</option>{% endfor %}</select>
+    <input name="note" placeholder="理由・メモ"><button class="btn ghost">状態を変更</button>
+  </form>
+  <form class="inline" method="post" action="/ui/assets/{{ a.asset_tag }}/jobs">
+    <select name="playbook">{% for k, v in playbooks.items() %}<option value="{{ k }}">{{ k }} — {{ v }}</option>{% endfor %}</select>
+    <button>スクリプト実行</button>
+  </form>
+  <div class="inline" style="display:flex;gap:8px;flex-wrap:wrap">
+    <a class="btn ghost" href="/api/v1/assets/{{ a.asset_tag }}/rdp">.rdp をダウンロード</a>
+    {% if guac %}<form method="post" action="/ui/assets/{{ a.asset_tag }}/remote" target="_blank" style="margin:0"><button class="btn ghost">ブラウザでリモート接続</button></form>{% endif %}
+  </div>
+  {% if is_admin and a.status.value == '廃棄待ち' %}
+  <hr style="border:0;border-top:1px solid var(--line);margin:14px 0">
+  <form class="inline" method="post" action="/ui/assets/{{ a.asset_tag }}/dispose">
+    <input name="method" placeholder="廃棄方法（リサイクル等）" required>
+    <input name="data_erasure" placeholder="データ消去方法・証跡（必須）" required size="30">
+    <input name="vendor" placeholder="廃棄業者"><input name="certificate" placeholder="証明書番号">
+    <button class="danger">廃棄を記録</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="card"><h2>スクリプト実行履歴</h2>
+    <table><thead><tr><th>#</th><th>プレイブック</th><th>結果</th><th>依頼者</th><th>日時</th></tr></thead><tbody>
+    {% for j in jobs %}
+      <tr><td><a href="/ui/jobs/{{ j.id }}">{{ j.id }}</a></td><td>{{ j.playbook }}</td>
+      <td><span class="badge b-{{ j.status }}">{{ j.status }}</span></td><td class="small">{{ j.requested_by }}</td><td class="small">{{ j.created_at | dt }}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">まだ実行されていません</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card"><h2>状態記録</h2>
+    <table><thead><tr><th>日時</th><th>変更</th><th>操作者</th><th>メモ</th></tr></thead><tbody>
+    {% for h in history %}
+      <tr><td class="small">{{ h.at | dt }}</td>
+      <td class="small">{% if h.from_status and h.from_status != h.to_status %}{{ h.from_status }} → {% endif %}<b>{{ h.to_status }}</b> <span class="muted">{{ h.event }}</span></td>
+      <td class="small">{{ h.actor }}</td><td class="small">{{ h.note }}</td></tr>
+    {% endfor %}
+    </tbody></table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+- name: Install Windows updates now
+  hosts: windows
+  gather_facts: false
+  tasks:
+    - name: Security and critical updates
+      ansible.windows.win_updates:
+        category_names: [SecurityUpdates, CriticalUpdates, UpdateRollups]
+        reboot: true
+        reboot_timeout: 3600
+      register: wu
+    - name: Summary
+      ansible.builtin.debug:
+        msg: "installed={{ wu.installed_update_count }} failed={{ wu.failed_update_count | default(0) }}"

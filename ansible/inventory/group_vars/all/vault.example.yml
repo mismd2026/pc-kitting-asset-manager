@@ -1,0 +1,6 @@
+# Copy to vault.yml and encrypt:  ansible-vault encrypt group_vars/all/vault.yml
+# Never commit the plaintext file (.gitignore covers vault.yml).
+vault_kitting_admin_user: kitadmin
+vault_kitting_admin_password: "CHANGE_ME"
+vault_domain_join_user: "svc-domainjoin@corp.example"
+vault_domain_join_password: "CHANGE_ME"

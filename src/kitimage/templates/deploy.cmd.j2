@@ -1,0 +1,71 @@
+@echo off
+rem ==========================================================================
+rem  Kitting pattern : {{ name }}
+rem  Built           : {{ built_at }}
+rem  Runs in WinPE from the kitting USB. ERASES DISK {{ p.image.disk.number | default(0) }}.
+rem ==========================================================================
+setlocal EnableExtensions
+set USB=%~d0
+set KIT=%USB%\kitting\{{ name }}
+set WIM=%USB%\{{ p.image.wim | win }}
+set LOG=X:\deploy-{{ name }}.log
+
+wpeutil UpdateBootInfo >nul
+for /f "tokens=3" %%A in ('reg query HKLM\System\CurrentControlSet\Control /v PEFirmwareType ^| find "PEFirmwareType"') do set FW=%%A
+if not "%FW%"=="0x2" (
+  echo [ERROR] This PC booted in legacy BIOS mode. Enable UEFI boot and retry.
+  exit /b 10
+)
+
+if exist "%USB%\{{ (p.image.wim | win) | replace('.wim', '.swm') }}" (
+  set APPLY=/ImageFile:"%USB%\{{ (p.image.wim | win) | replace('.wim', '.swm') }}" /SWMFile:"%USB%\{{ (p.image.wim | win) | replace('.wim', '*.swm') }}"
+) else (
+  if not exist "%WIM%" ( echo [ERROR] Image not found: %WIM% & exit /b 11 )
+  set APPLY=/ImageFile:"%WIM%"
+)
+
+echo.
+echo  Pattern : {{ name }}
+echo  Image   : {{ p.image.wim }} (index {{ p.image.index }})
+echo  Target  : DISK {{ p.image.disk.number | default(0) }} - ALL DATA WILL BE ERASED
+echo.
+diskpart /s "%KIT%\list-disks.txt" 2>nul
+set /p OK=Type YES to continue: 
+if /i not "%OK%"=="YES" ( echo Cancelled. & exit /b 1 )
+
+echo [1/6] Partitioning...                       >> %LOG%
+diskpart /s "%KIT%\diskpart.txt" >> %LOG% 2>&1 || ( echo [ERROR] diskpart failed, see %LOG% & exit /b 20 )
+
+echo [2/6] Applying image (this takes a while)...
+dism /Apply-Image %APPLY% /Index:{{ p.image.index }} /ApplyDir:W:\ /CheckIntegrity >> %LOG% 2>&1 || ( echo [ERROR] DISM apply failed, see %LOG% & exit /b 21 )
+
+{% if p.image.drivers %}
+echo [3/6] Injecting drivers...
+dism /Image:W:\ /Add-Driver /Driver:"%USB%\{{ p.image.drivers | win }}" /Recurse >> %LOG% 2>&1 || ( echo [ERROR] driver injection failed, see %LOG% & exit /b 22 )
+{% else %}
+echo [3/6] No drivers for this pattern.
+{% endif %}
+
+echo [4/6] Copying unattend and first-boot scripts...
+mkdir W:\Windows\Panther 2>nul
+copy /y "%KIT%\unattend.xml" W:\Windows\Panther\unattend.xml >> %LOG% || exit /b 23
+mkdir W:\Windows\Setup\Scripts 2>nul
+copy /y "%KIT%\SetupComplete.cmd" W:\Windows\Setup\Scripts\SetupComplete.cmd >> %LOG% || exit /b 23
+mkdir W:\ProgramData\Kitting 2>nul
+copy /y "%KIT%\enroll.ps1" W:\ProgramData\Kitting\enroll.ps1 >> %LOG% || exit /b 23
+copy /y "%KIT%\manifest.json" W:\ProgramData\Kitting\manifest.json >> %LOG%
+
+echo [5/6] Recovery environment...
+mkdir R:\Recovery\WindowsRE 2>nul
+if exist W:\Windows\System32\Recovery\Winre.wim (
+  xcopy /h /y W:\Windows\System32\Recovery\Winre.wim R:\Recovery\WindowsRE\ >> %LOG%
+  W:\Windows\System32\Reagentc /Setreimage /Path R:\Recovery\WindowsRE /Target W:\Windows >> %LOG% 2>&1
+)
+
+echo [6/6] Boot files...
+W:\Windows\System32\bcdboot W:\Windows /s S: /f UEFI >> %LOG% 2>&1 || ( echo [ERROR] bcdboot failed & exit /b 24 )
+copy /y %LOG% W:\ProgramData\Kitting\ >nul
+
+echo Done. Remove the USB; the PC will reboot and finish setup automatically.
+timeout /t 10
+wpeutil reboot

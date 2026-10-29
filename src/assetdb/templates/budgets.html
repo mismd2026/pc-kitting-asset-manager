@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>予算</h1>
+<div class="table-wrap"><table>
+  <thead><tr><th>年度</th><th>コード</th><th>名称</th><th class="num">予算額</th><th class="num">執行額</th><th class="num">残額</th><th style="width:200px">執行率</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr><td>{{ r.b.fiscal_year }}</td><td>{{ r.b.code }}</td><td>{{ r.b.name }}</td>
+    <td class="num">{{ r.b.amount | yen }}</td><td class="num">{{ r.spent | yen }}</td>
+    <td class="num">{{ r.remaining | yen }}</td>
+    <td><div class="bar"><i class="{{ 'over' if r.pct > 90 }}" style="width:{{ [r.pct,100]|min }}%"></i></div><span class="small muted">{{ r.pct }}%</span></td></tr>
+  {% else %}<tr><td colspan="7" class="muted">予算が登録されていません</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

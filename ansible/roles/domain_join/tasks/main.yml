@@ -1,0 +1,9 @@
+- name: Join Active Directory into the pattern's OU
+  microsoft.ad.membership:
+    dns_domain_name: "{{ pattern.ansible.domain }}"
+    domain_ou_path: "{{ pattern.ansible.ou }}"
+    hostname: "{{ inventory_hostname }}"
+    domain_admin_user: "{{ vault_domain_join_user }}"
+    domain_admin_password: "{{ vault_domain_join_password }}"
+    state: domain
+    reboot: true

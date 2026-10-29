@@ -1,0 +1,14 @@
+- name: Collect hardware/OS facts and verify identity
+  hosts: windows
+  gather_facts: true
+  roles:
+    - collect_facts
+  post_tasks:
+    - name: Send facts to the asset DB
+      ansible.builtin.include_role:
+        name: report
+      vars:
+        report_ok: true
+        report_summary: >-
+          model={{ collect_facts_hw.model }} bios={{ collect_facts_hw.bios }}
+          os={{ ansible_distribution }} {{ ansible_distribution_version }} ram={{ ansible_memtotal_mb }}MB

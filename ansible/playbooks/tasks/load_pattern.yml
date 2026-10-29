@@ -1,0 +1,4 @@
+- name: Load kitting pattern definition (shared with the image builder)
+  ansible.builtin.include_vars:
+    file: "{{ patterns_dir }}/{{ kitting_pattern | default('standard', true) }}.yml"
+    name: pattern

@@ -1,0 +1,45 @@
+# Full kitting for freshly imaged PCs. Queued automatically by the asset DB when
+# a PC checks in after image deployment; can also be re-run from the UI/CLI.
+- name: Kit Windows PCs
+  hosts: windows
+  gather_facts: true
+  pre_tasks:
+    - name: Load pattern
+      ansible.builtin.import_tasks: tasks/load_pattern.yml
+  tasks:
+    - name: Configure and report
+      block:
+        - name: Verify this is the asset the DB thinks it is
+          ansible.builtin.import_role:
+            name: collect_facts
+        - name: Baseline
+          ansible.builtin.import_role:
+            name: baseline
+        - name: Domain join
+          ansible.builtin.import_role:
+            name: domain_join
+          when: pattern.ansible.join_domain | default(false)
+        - name: Security hardening
+          ansible.builtin.import_role:
+            name: security
+        - name: Applications
+          ansible.builtin.import_role:
+            name: apps
+      rescue:
+        - name: Report failure to the asset DB
+          ansible.builtin.include_role:
+            name: report
+          vars:
+            report_ok: false
+            report_summary: "{{ ansible_failed_task.name | default('?') }}: {{ ansible_failed_result.msg | default('failed') | truncate(500) }}"
+        - name: Stop this host
+          ansible.builtin.fail:
+            msg: "Kitting failed on {{ inventory_hostname }}"
+    - name: Report success to the asset DB
+      ansible.builtin.include_role:
+        name: report
+      vars:
+        report_ok: true
+        report_summary: >-
+          pattern={{ pattern.name }} apps={{ pattern.ansible.apps | default([]) | length }}
+          os={{ ansible_distribution }} {{ ansible_distribution_version }}

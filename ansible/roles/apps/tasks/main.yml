@@ -1,0 +1,18 @@
+- name: Chocolatey client from the internal repository
+  chocolatey.chocolatey.win_chocolatey:
+    name: chocolatey
+    state: present
+    source: "{{ apps_source }}"
+
+- name: Applications for pattern {{ pattern.name }}
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ pattern.ansible.apps | default([]) }}"
+    state: "{{ apps_state }}"
+    source: "{{ apps_source }}"
+  when: pattern.ansible.apps | default([]) | length > 0
+
+- name: Remove apps this pattern must not have
+  chocolatey.chocolatey.win_chocolatey:
+    name: "{{ pattern.ansible.apps_remove }}"
+    state: absent
+  when: pattern.ansible.apps_remove | default([]) | length > 0

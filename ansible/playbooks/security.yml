@@ -1,0 +1,8 @@
+- name: Apply security configuration
+  hosts: windows
+  gather_facts: true
+  pre_tasks:
+    - name: Load pattern
+      ansible.builtin.import_tasks: tasks/load_pattern.yml
+  roles:
+    - security

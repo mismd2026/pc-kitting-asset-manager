@@ -1,0 +1,88 @@
+- name: Windows Firewall on for all profiles
+  ansible.windows.win_firewall:
+    state: enabled
+    profiles: [Domain, Private, Public]
+
+- name: Disable SMBv1 and other legacy features
+  ansible.windows.win_optional_feature:
+    name: "{{ pattern.ansible.features_disable | default(['SMB1Protocol']) }}"
+    state: absent
+  notify: Reboot
+
+- name: Disable the built-in Guest account
+  ansible.windows.win_user:
+    name: Guest
+    account_disabled: true
+
+- name: Password policy
+  community.windows.win_security_policy:
+    section: System Access
+    key: "{{ item.key }}"
+    value: "{{ item.value }}"
+  loop:
+    - { key: MinimumPasswordLength, value: "{{ security_min_password_length }}" }
+    - { key: PasswordComplexity, value: 1 }
+    - { key: LockoutBadCount, value: 10 }
+
+- name: Remote Desktop with Network Level Authentication only
+  ansible.windows.win_regedit:
+    path: "{{ item.path }}"
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+  loop:
+    - path: 'HKLM:\System\CurrentControlSet\Control\Terminal Server'
+      name: fDenyTSConnections
+      data: "{{ 0 if pattern.ansible.rdp | default(true) else 1 }}"
+    - { path: 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp', name: UserAuthentication, data: 1 }
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: RDP reachable only from the management subnet
+  community.windows.win_firewall_rule:
+    name: Kitting - RDP from management subnet
+    localport: 3389
+    protocol: tcp
+    direction: in
+    action: allow
+    remoteip: "{{ security_management_subnet }}"
+    profiles: [Domain, Private]
+    state: "{{ 'present' if pattern.ansible.rdp | default(true) else 'absent' }}"
+
+- name: Microsoft Defender real-time and cloud protection
+  ansible.windows.win_powershell:
+    script: |
+      $p = Get-MpPreference
+      $changed = $false
+      if ($p.DisableRealtimeMonitoring) { Set-MpPreference -DisableRealtimeMonitoring $false; $changed = $true }
+      if ($p.MAPSReporting -ne 2) { Set-MpPreference -MAPSReporting Advanced; $changed = $true }
+      if ($p.PUAProtection -ne 1) { Set-MpPreference -PUAProtection Enabled; $changed = $true }
+      $Ansible.Changed = $changed
+
+- name: Windows LAPS - rotate the local admin password automatically
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\LAPS
+    name: "{{ item.name }}"
+    data: "{{ item.data }}"
+    type: dword
+  loop:
+    - { name: BackupDirectory, data: "{{ 2 if pattern.ansible.join_domain | default(false) else 0 }}" }  # 2 = Active Directory
+    - { name: PasswordAgeDays, data: 30 }
+    - { name: PasswordLength, data: 16 }
+  loop_control:
+    label: "{{ item.name }}"
+  when: pattern.ansible.join_domain | default(false)
+
+- name: BitLocker on the OS drive (TPM + recovery password)
+  ansible.windows.win_powershell:
+    script: |
+      $v = Get-BitLockerVolume -MountPoint $env:SystemDrive
+      if ($v.VolumeStatus -ne 'FullyDecrypted') { $Ansible.Changed = $false; return "already $($v.VolumeStatus)" }
+      Add-BitLockerKeyProtector -MountPoint $env:SystemDrive -RecoveryPasswordProtector | Out-Null
+      Enable-BitLocker -MountPoint $env:SystemDrive -EncryptionMethod XtsAes256 -TpmProtector -UsedSpaceOnly -SkipHardwareTest | Out-Null
+      $kp = (Get-BitLockerVolume -MountPoint $env:SystemDrive).KeyProtector | Where-Object KeyProtectorType -eq 'RecoveryPassword'
+      if ($env:USERDNSDOMAIN) { Backup-BitLockerKeyProtector -MountPoint $env:SystemDrive -KeyProtectorId $kp.KeyProtectorId | Out-Null }
+      $Ansible.Changed = $true
+      "encryption started"
+  when: pattern.ansible.bitlocker | default(security_bitlocker)
+  no_log: true  # never put recovery passwords in job output

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}PC資産管理{% endblock %}</title>
+<style>
+  :root { --fg:#1d2733; --muted:#66758a; --line:#e2e7ee; --bg:#f5f7fa; --brand:#1f4e8c; --ok:#18794e; --warn:#a15c00; --ng:#b42318; --chip:#eef2f8; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.6 "Hiragino Sans","Noto Sans JP",system-ui,sans-serif; color:var(--fg); background:var(--bg); }
+  a { color:var(--brand); text-decoration:none; } a:hover { text-decoration:underline; }
+  header { display:flex; align-items:center; gap:24px; padding:0 20px; height:52px; background:#13233a; color:#fff; }
+  header .brand { font-weight:700; letter-spacing:.02em; }
+  header nav a { color:#c9d6ea; margin-right:16px; } header nav a.on { color:#fff; font-weight:600; }
+  header .me { margin-left:auto; font-size:12px; color:#c9d6ea; display:flex; gap:12px; align-items:center; }
+  header .me button { background:none; border:1px solid #3d5373; color:#c9d6ea; border-radius:4px; padding:2px 8px; cursor:pointer; }
+  main { max-width:1200px; margin:0 auto; padding:20px; }
+  h1 { font-size:20px; margin:0 0 14px; } h2 { font-size:15px; margin:0 0 10px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; background:#fff; }
+  th, td { padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  th { background:#f0f3f8; font-weight:600; font-size:12px; color:#3b4a5e; white-space:nowrap; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.nw { white-space:nowrap; }
+  .badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; white-space:nowrap; background:var(--chip); color:#2b3b52; }
+  .b-稼働中 { background:#e3f4ea; color:var(--ok); } .b-在庫 { background:#e6eefb; color:var(--brand); }
+  .b-キッティング中 { background:#fff3dc; color:var(--warn); } .b-修理中 { background:#fde8e6; color:var(--ng); }
+  .b-廃棄待ち,.b-廃棄済 { background:#ececec; color:#555; } .b-返却済 { background:#f1eafc; color:#5b3a99; }
+  .b-succeeded { background:#e3f4ea; color:var(--ok); } .b-failed { background:#fde8e6; color:var(--ng); }
+  .b-running,.b-queued { background:#fff3dc; color:var(--warn); }
+  .muted { color:var(--muted); } .small { font-size:12px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; }
+  dl.kv { display:grid; grid-template-columns:120px 1fr; gap:4px 12px; margin:0; }
+  dl.kv dt { color:var(--muted); font-size:12px; padding-top:2px; } dl.kv dd { margin:0; word-break:break-all; }
+  form.inline { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:0 0 10px; }
+  input, select { padding:6px 8px; border:1px solid #cfd7e2; border-radius:5px; font:inherit; background:#fff; }
+  button, .btn { padding:6px 12px; border:0; border-radius:5px; background:var(--brand); color:#fff; font:inherit; cursor:pointer; display:inline-block; }
+  .btn.ghost { background:#fff; color:var(--brand); border:1px solid #c3d0e4; }
+  button.danger { background:var(--ng); }
+  .flash { padding:10px 14px; border-radius:6px; margin-bottom:14px; }
+  .flash.ok { background:#e3f4ea; color:var(--ok); } .flash.ng { background:#fde8e6; color:var(--ng); }
+  .stats { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px; }
+  .stat { background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 14px; min-width:96px; }
+  .stat b { display:block; font-size:18px; } .stat span { font-size:12px; color:var(--muted); }
+  pre { background:#0f1b2b; color:#d7e2f2; padding:14px; border-radius:6px; overflow:auto; font-size:12px; max-height:70vh; }
+  .bar { height:8px; background:#e6ebf2; border-radius:4px; overflow:hidden; } .bar i { display:block; height:100%; background:var(--brand); }
+  .bar i.over { background:var(--ng); }
+  .table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:8px; }
+  @media (max-width:700px) { header nav { display:none; } header .brand { font-size:13px; } dl.kv { grid-template-columns:96px 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">PC Kitting &amp; Asset Manager</span>
+  {% if me %}
+  <nav>
+    <a href="/ui/assets" class="{{ 'on' if request.url.path.startswith('/ui/assets') }}">資産</a>
+    <a href="/ui/budgets" class="{{ 'on' if request.url.path.startswith('/ui/budgets') }}">予算</a>
+    <a href="/api/v1/reports/depreciation">償却レポート(CSV)</a>
+    <a href="/docs">API</a>
+  </nav>
+  <div class="me">{{ me.name }}（{{ me.role.value }}）
+    <form method="post" action="/logout" style="margin:0"><button>ログアウト</button></form>
+  </div>
+  {% endif %}
+</header>
+<main>
+  {% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="flash ng">{{ err }}</div>{% endif %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

@@ -1,0 +1,16 @@
+# Runs on the controller: the PC itself never holds an operator token.
+- name: Report result to the asset DB
+  ansible.builtin.uri:
+    url: "{{ assetdb_url }}/api/v1/kitting/report"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ assetdb_token }}"
+    body_format: json
+    body:
+      serial: "{{ serial_number }}"
+      ok: "{{ report_ok | bool }}"
+      summary: "{{ report_summary | truncate(1900) }}"
+    status_code: [200]
+  delegate_to: localhost
+  become: false
+  no_log: false

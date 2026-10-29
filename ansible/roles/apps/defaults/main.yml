@@ -1,0 +1,2 @@
+apps_source: https://nexus.example.local/repository/choco/  # internal mirror, not the public feed
+apps_state: present

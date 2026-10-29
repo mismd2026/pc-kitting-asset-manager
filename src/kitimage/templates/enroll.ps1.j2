@@ -1,0 +1,70 @@
+<#
+  First-boot enrollment for kitting pattern "{{ name }}" (built {{ built_at }}).
+  Runs as SYSTEM from SetupComplete.cmd. Steps:
+    1. compute the hostname from the firmware serial number
+    2. enable WinRM over HTTPS, reachable only from the management subnet
+    3. check in to the asset DB (retries with backoff) -> the DB queues the Ansible run
+    4. rename and reboot
+#>
+$ErrorActionPreference = 'Stop'
+$Log = 'C:\ProgramData\Kitting\enroll.log'
+function Log($m) { "$(Get-Date -Format s) $m" | Tee-Object -FilePath $Log -Append }
+
+$Pattern   = '{{ name | ps }}'
+$Prefix    = '{{ p.oobe.hostname_prefix | ps }}'
+$EnrollUrl = '{{ p.enroll.url | ps }}'
+$MgmtNet   = '{{ p.enroll.management_subnet | ps }}'
+$Token     = '{{ enroll_token | ps }}'
+
+# 1. hostname = PREFIX-<serial tail>, max {{ netbios_max }} chars (same rule as kitimage.pattern.hostname_for)
+$Serial = (Get-CimInstance Win32_BIOS).SerialNumber.Trim()
+$Clean  = ($Serial -replace '[^A-Za-z0-9]', '').ToUpper()
+if (-not $Clean) { $Clean = 'UNKNOWN' }
+$Room   = {{ netbios_max }} - $Prefix.Length - 1
+$Host_  = "$Prefix-" + $Clean.Substring([Math]::Max(0, $Clean.Length - $Room))
+Log "serial=$Serial hostname=$Host_ pattern=$Pattern"
+
+# 2. WinRM HTTPS (self-signed until AD CS auto-enrollment replaces it after domain join)
+$cert = New-SelfSignedCertificate -DnsName $Host_, $env:COMPUTERNAME -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddDays(30)
+Enable-PSRemoting -SkipNetworkProfileCheck -Force | Out-Null
+Get-ChildItem WSMan:\localhost\Listener | Where-Object { $_.Keys -contains 'Transport=HTTP' } | Remove-Item -Recurse -Force
+New-Item -Path WSMan:\localhost\Listener -Transport HTTPS -Address * -CertificateThumbPrint $cert.Thumbprint -Force | Out-Null
+Set-Item WSMan:\localhost\Service\Auth\Basic -Value $false
+Set-Item WSMan:\localhost\Service\AllowUnencrypted -Value $false
+Get-NetFirewallRule -Name 'WINRM-HTTP-In-TCP*' -ErrorAction SilentlyContinue | Disable-NetFirewallRule
+New-NetFirewallRule -Name 'Kitting-WinRM-HTTPS' -DisplayName 'Kitting - WinRM HTTPS from management subnet' `
+  -Protocol TCP -LocalPort 5986 -Direction Inbound -Action Allow -RemoteAddress $MgmtNet -ErrorAction SilentlyContinue | Out-Null
+Log 'WinRM HTTPS listener ready'
+
+# 3. check in
+$nic = Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' } | Select-Object -First 1
+$body = @{
+  serial   = $Serial
+  hostname = $Host_
+  ip       = $nic.IPv4Address.IPAddress
+  mac      = ($nic.NetAdapter.MacAddress -replace '-', ':')
+  pattern  = $Pattern
+  os_build = (Get-CimInstance Win32_OperatingSystem).BuildNumber
+} | ConvertTo-Json
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$ok = $false
+foreach ($wait in 5, 15, 30, 60, 120, 300) {
+  try {
+    Invoke-RestMethod -Uri $EnrollUrl -Method Post -Body ([Text.Encoding]::UTF8.GetBytes($body)) `
+      -ContentType 'application/json; charset=utf-8' -Headers @{ Authorization = "Bearer $Token" } | Out-Null
+    $ok = $true; Log 'checked in to asset DB'; break
+  } catch {
+    $code = $_.Exception.Response.StatusCode.value__
+    Log "check-in failed (HTTP $code): $($_.Exception.Message)"
+    if ($code -eq 404) { Log 'serial not registered in the asset DB - register the purchase first'; break }
+    Start-Sleep -Seconds $wait
+  }
+}
+if (-not $ok) { Log 'continuing without check-in; run enroll.ps1 again once the network is ready' }
+
+# 4. rename + reboot (the reboot also activates the hostname for Ansible)
+if ($env:COMPUTERNAME -ne $Host_) {
+  Rename-Computer -NewName $Host_ -Force
+  Log "renamed to $Host_; rebooting"
+  shutdown.exe /r /t 30 /c "Kitting: renamed to $Host_" | Out-Null
+}

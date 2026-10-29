@@ -1,0 +1,57 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        db: [sqlite, postgres]
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: test, POSTGRES_DB: assetdb_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip }
+      - run: pip install -e ".[dev,postgres]"
+      - run: ruff check . && ruff format --check .
+      - name: pytest (${{ matrix.db }})
+        run: pytest -q
+        env:
+          ASSETDB_TEST_URL: ${{ matrix.db == 'postgres' && 'postgresql+psycopg://postgres:test@localhost:5432/assetdb_test' || '' }}
+
+  ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install ansible ansible-lint pyyaml jinja2
+      - name: ansible-lint (production profile)
+        working-directory: ansible
+        run: ansible-lint --offline playbooks/ roles/
+      - name: syntax-check every playbook
+        working-directory: ansible
+        run: |
+          printf 'windows:\n  hosts:\n    ci-host: {}\n' > /tmp/inv.yml
+          for pb in playbooks/*.yml; do ansible-playbook -i /tmp/inv.yml --syntax-check "$pb"; done
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e .
+      - run: kit-image validate
+      - name: build every pattern with placeholder secrets
+        run: for p in standard developer kiosk; do kit-image build $p --out dist --placeholder-secrets; done
+      - uses: actions/upload-artifact@v4
+        with: { name: kitting-files, path: dist/ }

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.env
+*.sqlite
+dist/
+.vault-pass
+ansible/inventory/group_vars/all/vault.yml
+*.rdp

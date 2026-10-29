@@ -1,0 +1,27 @@
+# 開発者向け（WSL・開発ツール、ローカル管理は別途申請）
+name: developer
+description: 開発者向けPC（WSL2・Git・VS Code・Docker Desktop）
+image:
+  wim: images/win11-24h2-enterprise.wim
+  index: 1
+  drivers: drivers/thinkpad-p16s
+  disk:
+    os_partition_label: Windows
+    recovery_partition_mb: 1024
+oobe:
+  locale: ja-JP
+  timezone: Tokyo Standard Time
+  hostname_prefix: DEV
+  organization: Example Corp
+enroll:
+  url: https://assets.example.local/api/v1/kitting/checkin
+  management_subnet: 10.10.0.0/24
+ansible:
+  join_domain: true
+  domain: corp.example
+  ou: OU=Developers,OU=PCs,DC=corp,DC=example
+  bitlocker: true
+  rdp: true
+  power_plan: high performance
+  apps: [googlechrome, 7zip, git, vscode, docker-desktop, python313, microsoft-windows-terminal]
+  features_disable: [SMB1Protocol, MicrosoftWindowsPowerShellV2Root]

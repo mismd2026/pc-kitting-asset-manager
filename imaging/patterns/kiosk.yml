@@ -1,0 +1,26 @@
+# 受付・共用端末（ドメイン非参加、RDP無効、最小構成）
+name: kiosk
+description: 受付・共用端末（ワークグループ、RDP無効、ブラウザのみ）
+image:
+  wim: images/win11-24h2-enterprise.wim
+  index: 1
+  drivers: drivers/thinkcentre-m70q
+  disk:
+    os_partition_label: Windows
+    recovery_partition_mb: 1024
+oobe:
+  locale: ja-JP
+  timezone: Tokyo Standard Time
+  hostname_prefix: KSK
+  organization: Example Corp
+enroll:
+  url: https://assets.example.local/api/v1/kitting/checkin
+  management_subnet: 10.10.0.0/24
+ansible:
+  join_domain: false
+  bitlocker: true
+  rdp: false
+  power_plan: balanced
+  apps: [googlechrome]
+  apps_remove: [7zip]
+  features_disable: [SMB1Protocol, MicrosoftWindowsPowerShellV2Root]

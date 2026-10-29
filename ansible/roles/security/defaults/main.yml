@@ -1,0 +1,4 @@
+security_bitlocker: true
+security_rdp_allowed_group: "Remote Desktop Users"
+security_management_subnet: "10.10.0.0/24"
+security_min_password_length: 12

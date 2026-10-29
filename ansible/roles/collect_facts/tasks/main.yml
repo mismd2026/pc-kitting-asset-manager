@@ -1,0 +1,20 @@
+- name: Read serial number and model from firmware
+  ansible.windows.win_powershell:
+    script: |
+      $b = Get-CimInstance Win32_BIOS
+      $c = Get-CimInstance Win32_ComputerSystem
+      [pscustomobject]@{ serial = $b.SerialNumber.Trim(); bios = $b.SMBIOSBIOSVersion; model = "$($c.Manufacturer) $($c.Model)" }
+  register: collect_facts_raw
+  changed_when: false
+
+- name: Set hardware facts
+  ansible.builtin.set_fact:
+    collect_facts_hw: "{{ collect_facts_raw.output[0] }}"
+
+# Guards against the classic kitting mistake: the wrong PC on the bench (or a DHCP
+# lease moved) and the configuration of someone else's asset gets applied.
+- name: Serial number must match the asset DB
+  ansible.builtin.assert:
+    that: collect_facts_hw.serial | upper == serial_number | upper
+    fail_msg: "S/N mismatch: device={{ collect_facts_hw.serial }} assetdb={{ serial_number }} ({{ asset_tag }})"
+    quiet: true

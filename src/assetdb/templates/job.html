@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>ジョブ #{{ j.id }} <span class="badge b-{{ j.status }}">{{ j.status }}</span></h1>
+<div class="card"><dl class="kv">
+  <dt>資産</dt><dd><a href="/ui/assets/{{ j.asset_tag }}">{{ j.asset_tag }}</a></dd>
+  <dt>プレイブック</dt><dd>{{ j.playbook }}</dd>
+  <dt>依頼者</dt><dd>{{ j.requested_by }}</dd>
+  <dt>開始 / 終了</dt><dd>{{ j.started_at | dt }} / {{ j.finished_at | dt }}</dd>
+  <dt>終了コード</dt><dd>{{ j.return_code if j.return_code is not none else '—' }}</dd>
+</dl></div>
+<pre>{{ j.output or '（出力はまだありません）' }}</pre>
+{% endblock %}

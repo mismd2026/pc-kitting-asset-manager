@@ -1,0 +1,48 @@
+- name: Hostname follows the asset DB
+  ansible.windows.win_hostname:
+    name: "{{ inventory_hostname }}"
+  register: baseline_rename
+
+- name: Reboot after rename
+  ansible.windows.win_reboot:
+  when: baseline_rename.reboot_required
+
+- name: Time zone
+  ansible.windows.win_timezone:
+    timezone: "{{ pattern.oobe.timezone | default(baseline_timezone) }}"
+
+- name: Region and display language defaults
+  ansible.windows.win_region:
+    location: "122"  # Japan
+    format: "{{ pattern.oobe.locale | default(baseline_locale) }}"
+    unicode_language: "{{ pattern.oobe.locale | default(baseline_locale) }}"
+    copy_settings: true
+  register: baseline_region
+
+- name: Power plan
+  community.windows.win_power_plan:
+    name: "{{ pattern.ansible.power_plan | default(baseline_power_plan) }}"
+
+- name: Disable consumer features (pre-installed store apps / suggestions)
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent
+    name: DisableWindowsConsumerFeatures
+    data: 1
+    type: dword
+  when: baseline_disable_consumer_features
+
+- name: Asset tag in the registry (visible to inventory/MDM tools)
+  ansible.windows.win_regedit:
+    path: HKLM:\SOFTWARE\Kitting
+    name: "{{ item.key }}"
+    data: "{{ item.value }}"
+    type: string
+  loop:
+    - { key: AssetTag, value: "{{ asset_tag }}" }
+    - { key: Pattern, value: "{{ pattern.name }}" }
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Reboot if region settings require it
+  ansible.windows.win_reboot:
+  when: baseline_region.restart_required | default(false)

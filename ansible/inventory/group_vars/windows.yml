@@ -1,0 +1,18 @@
+# Connection: WinRM over HTTPS (5986) with Kerberos inside the domain.
+# During first kitting (before domain join) NTLM with the temporary local admin is used;
+# enroll.ps1 opens 5986 only for the management subnet.
+ansible_connection: winrm
+ansible_port: 5986
+ansible_winrm_scheme: https
+ansible_winrm_transport: "{{ 'kerberos' if (asset_status | default('')) == '稼働中' else 'ntlm' }}"
+# Before domain join the PC only has the self-signed cert from enroll.ps1 (and WinRM is
+# reachable only from the management subnet). After join, AD CS issues a trusted cert.
+ansible_winrm_server_cert_validation: "{{ 'validate' if (asset_status | default('')) == '稼働中' else 'ignore' }}"
+ansible_winrm_ca_trust_path: "{{ winrm_ca_bundle | default(omit) }}"
+ansible_user: "{{ vault_kitting_admin_user }}"
+ansible_password: "{{ vault_kitting_admin_password }}"
+
+# Where the pattern definitions live (shared with the image builder)
+patterns_dir: "{{ playbook_dir }}/../../imaging/patterns"
+assetdb_url: "{{ lookup('ansible.builtin.env', 'ASSETDB_URL') | default('http://localhost:8000', true) }}"
+assetdb_token: "{{ lookup('ansible.builtin.env', 'ASSETDB_TOKEN') }}"

@@ -1,0 +1,27 @@
+# 一般社員向け標準PC
+name: standard
+description: 一般社員向け標準ノートPC（ドメイン参加・BitLocker・Office系アプリ）
+image:
+  wim: images/win11-24h2-enterprise.wim
+  index: 1
+  drivers: drivers/thinkpad-t14-gen5
+  disk:
+    os_partition_label: Windows
+    recovery_partition_mb: 1024
+oobe:
+  locale: ja-JP
+  timezone: Tokyo Standard Time
+  hostname_prefix: PC
+  organization: Example Corp
+enroll:
+  url: https://assets.example.local/api/v1/kitting/checkin
+  management_subnet: 10.10.0.0/24
+ansible:
+  join_domain: true
+  domain: corp.example
+  ou: OU=Standard,OU=PCs,DC=corp,DC=example
+  bitlocker: true
+  rdp: true
+  power_plan: balanced
+  apps: [googlechrome, 7zip, adobereader, microsoft-teams-new-bootstrapper]
+  features_disable: [SMB1Protocol, MicrosoftWindowsPowerShellV2Root]

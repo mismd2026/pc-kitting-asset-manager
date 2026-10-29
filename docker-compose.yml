@@ -1,0 +1,57 @@
+# docker compose up -d
+#   http://localhost:8000          asset manager (log in with BOOTSTRAP_ADMIN_TOKEN)
+#   http://localhost:8080/guacamole remote desktop gateway
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: assetdb
+      POSTGRES_USER: assetdb
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes: [pg:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U assetdb"]
+      interval: 5s
+
+  api:
+    build: .
+    ports: ["8000:8000"]
+    env_file: .env
+    environment:
+      ASSETDB_URL: postgresql+psycopg://assetdb:${POSTGRES_PASSWORD}@db/assetdb
+      GUAC_URL: http://guacamole:8080/guacamole
+    depends_on: { db: { condition: service_healthy } }
+
+  worker:
+    build: .
+    command: ["python", "-m", "assetdb.main", "worker"]
+    env_file: .env
+    environment:
+      ASSETDB_URL: postgresql+psycopg://assetdb:${POSTGRES_PASSWORD}@db/assetdb
+      ASSETDB_TOKEN: ${WORKER_TOKEN:?operator token for inventory/report}
+    volumes:
+      - ./ansible/inventory/group_vars/all/vault.yml:/app/ansible/inventory/group_vars/all/vault.yml:ro
+      - ${ANSIBLE_VAULT_PASSWORD_FILE:-./.vault-pass}:/run/secrets/vault-pass:ro
+    depends_on: { db: { condition: service_healthy } }
+    deploy: { replicas: 2 }  # SKIP LOCKED lets several workers share the queue
+
+  guacd:
+    image: guacamole/guacd:1.5.5
+    volumes: [recordings:/var/lib/guacamole/recordings]
+
+  guacamole:
+    image: guacamole/guacamole:1.5.5
+    ports: ["8080:8080"]
+    environment:
+      GUACD_HOSTNAME: guacd
+      POSTGRESQL_HOSTNAME: db
+      POSTGRESQL_DATABASE: guacamole
+      POSTGRESQL_USER: assetdb
+      POSTGRESQL_PASSWORD: ${POSTGRES_PASSWORD}
+      RECORDING_SEARCH_PATH: /var/lib/guacamole/recordings
+    volumes: [recordings:/var/lib/guacamole/recordings:ro]
+    depends_on: [guacd, db]
+
+volumes:
+  pg: {}
+  recordings: {}
