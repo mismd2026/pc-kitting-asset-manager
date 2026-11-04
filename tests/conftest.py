@@ -34,7 +34,7 @@ class FakeGuac:
 def db():
     """SQLite by default; set ASSETDB_TEST_URL=postgresql+psycopg://... to run the
     whole suite against PostgreSQL (CI does both)."""
-    d = Database(os.environ.get("ASSETDB_TEST_URL", "sqlite://"))
+    d = Database(os.environ.get("ASSETDB_TEST_URL") or "sqlite://")
     Base.metadata.drop_all(d.engine)
     d.create_all()
     yield d
