@@ -105,6 +105,69 @@ stateDiagram-v2
 
 資産項目は価格から自動で判定し、個別に上書きもできます。年度の開始月は設定で変えられます。管理会計上の目安として計算しているため、実際の処理は経理部門・税理士の判断に合わせてください。
 
+### データベース
+
+PostgreSQL 16（`docker-compose.yml`）、設定がなければ SQLite（`assetdb.sqlite`）で動きます。テーブルは SQLAlchemy で定義しています（`src/assetdb/models.py`）。リモート接続に使う Guacamole は、同じ PostgreSQL サーバー上の別データベースに接続情報を持ちます（アプリ側は `assets.guac_connection_id` で対応づけ）。
+
+```mermaid
+erDiagram
+    budgets |o--o{ assets : "予算から購入"
+    assets ||--o{ status_history : "状態記録（追記のみ）"
+    assets ||--o{ jobs : "Ansible実行"
+
+    budgets {
+        int id PK
+        string code UK
+        int fiscal_year
+        int amount "円"
+    }
+    assets {
+        int id PK
+        string asset_tag UK "資産番号"
+        string serial_number UK
+        string status "発注済〜廃棄済"
+        int budget_id FK
+        int price "税抜・円"
+        string asset_item "資産項目"
+        string assignee "割り当て先"
+        string hostname
+        string kitting_pattern
+        string data_erasure "消去方法・証跡"
+        string guac_connection_id
+    }
+    status_history {
+        int id PK
+        int asset_id FK
+        string from_status
+        string to_status
+        string event
+        string actor
+    }
+    jobs {
+        int id PK
+        int asset_id FK
+        string playbook
+        json extra_vars
+        string status
+        int return_code
+    }
+    api_tokens {
+        int id PK
+        string role "admin / operator / viewer / enroll"
+        string token_hash UK "SHA-256"
+        bool revoked
+    }
+    audit_log {
+        int id PK
+        string actor
+        string action
+        string target
+        json detail
+    }
+```
+
+`api_tokens` と `audit_log` はほかのテーブルと外部キーでつながない独立したテーブルです。監査ログは資産が消えても残るよう、対象を文字列（`target`）で持ちます。
+
 ### 権限
 
 | ロール | できること |
